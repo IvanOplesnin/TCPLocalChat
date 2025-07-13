@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:15
+    container_name: OnlineChat
+    working_dir: /database
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: OnlineChat
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - chat_online
+
+volumes:
+  postgres_data:
+
+networks:
+  chat_online:
