@@ -99,4 +99,19 @@ class DbRepo:
             room = room.scalars().first()
             return room
 
+    async def get_user_by_id(self, user_id: int):
+        async with self.async_session() as session:
+            stmt = select(User).where(User.id == user_id)
+            user = await session.execute(stmt)
+            user = user.scalars().first()
+            return user
+
+    async def get_all_users(self):
+        async with self.async_session() as session:
+            stmt = select(User)
+            users = await session.execute(stmt)
+            users = users.scalars().all()
+            return users
+
+
 

@@ -1,6 +1,9 @@
 import asyncio
+import json
 
-from action.schemas_message import END_MARKER
+from action.schemas_message import END_MARKER, InitMessage, TokenMessage, UpdateMessage
+from action.schemas import RegisterAction, AuthorizeAction, JoinServerAction, Command
+
 
 async def send_messages(writer):
     while True:
@@ -11,7 +14,13 @@ async def send_messages(writer):
             writer.close()
             await writer.wait_closed()
             break
-        writer.write(msg.encode() + b"\n")
+        register = RegisterAction(
+            username='i_vanya0956',
+            password='ivashka',
+            command=Command.REGISTER
+        )
+        msg = json.dumps(register.model_dump()).encode() + END_MARKER
+        writer.write(msg)
         await writer.drain()
 
 async def receive_messages(reader):

@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 from enum import Enum
 from typing import Optional, Literal, Annotated, Union, TYPE_CHECKING, Protocol
 
@@ -12,8 +13,9 @@ from action.schemas_message import (
     InitMessage,
     UpdateMessage,
     TokenMessage,
-    TypeMessage
+    TypeMessage, UserBrief, UpdateKind, END_MARKER
 )
+from utils.logger import get_logger
 
 if TYPE_CHECKING:
     from server.server import Server
@@ -25,7 +27,7 @@ class Command(str, Enum):
     JOIN_USER = 'JOIN_USER'
     SEND = 'SEND'
     LEAVE = 'LEAVE'
-    CREATE = 'CREATE'
+    JOIN_SERVER = 'JOIN_SERVER'
     REGISTER = 'REGISTER'
     AUTHORIZE = 'AUTHORIZE'
 
@@ -35,10 +37,18 @@ class BaseAction(BaseModel):
     command: Command
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} token={self.token} command={self.command}>'
+        return f'<{self.__class__.__name__}: {self.model_dump()}>'
+
+    def _to_bytes(self) -> bytes:
+        return json.dumps(self.model_dump()).encode() + END_MARKER
+
+    async def send_action(self, writer: 'asyncio.StreamWriter'):
+        writer.write(self._to_bytes())
+        await writer.drain()
+        self.log.info(f"Отправлена информация {json.dumps(self.model_dump())}")
 
 
-class RegisterAction(BaseModel):
+class RegisterAction(BaseAction):
     command: Literal[Command.REGISTER]
     username: str
     password: str
@@ -47,17 +57,36 @@ class RegisterAction(BaseModel):
     async def run(self, server: "Server", _: 'asyncio.StreamReader', writer: 'asyncio.StreamWriter'):
         try:
             new_user: User = await server.db.new_user(self)
-        except:
-            raise
-        server.users[new_user.id] = writer
-        auth_token = create_token(new_user)
-        token_message = TokenMessage(content=auth_token, type=TypeMessage.token)
-        await token_message.send_message(writer)
+            all_users = await server.db.get_all_users()
+            users = [UserBrief(id=u.id, username=u.username) for u in all_users]
+            server.users[new_user.id] = writer
+            auth_token = create_token(new_user)
+            token_message = TokenMessage(content=auth_token, type=TypeMessage.token)
+            init_message = InitMessage(
+                self_user={"id": new_user.id, "username": new_user.username},
+                type=TypeMessage.init,
+                rooms=[],
+                all_users=users,
+                online_users=[u for u in users if u.id in server.users],
+            )
+            update_message = UpdateMessage(
+                kind=UpdateKind.user_online,
+                payload={"id": new_user.id, "username": new_user.username},
+                type=TypeMessage.update,
+            )
+            await token_message.send_message(writer)
+            await init_message.send_message(writer)
+            await update_message.send_message(writer)
+            server.log.info(f"Отправлено {token_message}")
+            server.log.info(f"Отправлено {init_message}")
+            server.log.info(f"Отправлено {update_message}")
+            return new_user
+        except Exception as e:
+            self.log.info(f'{str(e)}')
+            writer.write(str(e).encode())
 
-        return new_user
 
-
-class AuthorizeAction(BaseModel):
+class AuthorizeAction(BaseAction):
     command: Literal[Command.AUTHORIZE]
     username: str
     password: str
@@ -74,8 +103,21 @@ class AuthorizeAction(BaseModel):
             writer.write(e.args[1].encode())
 
 
-class CreateAction(BaseAction):
-    command: Literal[Command.CREATE]
+class JoinServerAction(BaseAction):
+    command: Literal[Command.JOIN_SERVER]
+
+    async def run(self, server: "Server", _: 'asyncio.StreamReader', writer: 'asyncio.StreamWriter'):
+        try:
+            payload = decode_token(self.token)
+            user_id, username = payload['id'], payload['username']
+            user = await server.db.get_user_by_id(user_id)
+            if user and user.username == username:
+                server.users[user_id.id] = writer
+            else:
+                raise Exception(f'User not found, maybe old token')
+        except Exception as e:
+
+            writer.write(e.args[1].encode())
 
 
 class JoinChatAction(BaseAction):
@@ -95,29 +137,32 @@ class JoinUserAction(BaseAction):
     user_id: int
     message: Optional[str] = None
 
-    async def run(self, server: "Server", _: 'asyncio.StreamReader', __: 'asyncio.StreamWriter'):
-        new_room: ChatRoom = await server.db.new_room(self)
-        payload = decode_token(self.token)
-        user_id, username = payload['id'], payload['username']
-        server.chats[new_room.id] = {self.user_id, user_id}
-        mes = f'{username} хочет с вами поболтать\n'
-        if self.message:
-            mes += f'{self.message}\n'
-        new_message = Message(
-            content=mes,
-            from_=user_id,
-            from_username=username,
-            room_id=new_room.id,
-            time_=datetime.datetime.now().strftime("%H:%M:%S"),
-            type=TypeMessage.message
-        )
+    async def run(self, server: "Server", _: 'asyncio.StreamReader', writer: 'asyncio.StreamWriter'):
+        try:
+            new_room: ChatRoom = await server.db.new_room(self)
+            payload = decode_token(self.token)
+            user_id, username = payload['id'], payload['username']
+            server.chats[new_room.id] = {self.user_id, user_id}
+            mes = f'{username} хочет с вами поболтать\n'
+            if self.message:
+                mes += f'{self.message}\n'
+            new_message = Message(
+                content=mes,
+                from_=user_id,
+                from_username=username,
+                room_id=new_room.id,
+                time_=datetime.datetime.now().strftime("%H:%M:%S"),
+                type=TypeMessage.message
+            )
 
-        for user in server.chats[new_room.id]:
-            user_writer = server.users.get(user)
-            if user_writer:
-                await new_message.send_message(user_writer)
+            for user in server.chats[new_room.id]:
+                user_writer = server.users.get(user)
+                if user_writer:
+                    await new_message.send_message(user_writer)
 
-        saved_message = await server.db.send_message(user_id, new_room.id, mes)
+            await server.db.send_message(user_id, new_room.id, mes)
+        except Exception as e:
+            writer.write(e.args[1].encode())
 
 
 class SendAction(BaseAction):
@@ -126,24 +171,27 @@ class SendAction(BaseAction):
     message: str
 
     async def run(self, server: "Server", _: 'asyncio.StreamReader', writer: 'asyncio.StreamWriter'):
-        room: ChatRoom = await server.db.get_room(self)
-        payload = decode_token(self.token)
-        user_id, username = payload['id'], payload['username']
-        mes = f'{self.message}'
-        new_message = Message(
-            content=mes,
-            from_=user_id,
-            from_username=username,
-            room_id=room.id,
-            time_=datetime.datetime.now().strftime("%H:%M:%S"),
-            type=TypeMessage.message
-        )
-        for user in server.chats[room.id]:
-            user_writer = server.users.get(user)
-            if user_writer:
-                await new_message.send_message(user_writer)
+        try:
+            room: ChatRoom = await server.db.get_room(self)
+            payload = decode_token(self.token)
+            user_id, username = payload['id'], payload['username']
+            mes = f'{self.message}'
+            new_message = Message(
+                content=mes,
+                from_=user_id,
+                from_username=username,
+                room_id=room.id,
+                time_=datetime.datetime.now().strftime("%H:%M:%S"),
+                type=TypeMessage.message
+            )
+            for user in server.chats[room.id]:
+                user_writer = server.users.get(user)
+                if user_writer:
+                    await new_message.send_message(user_writer)
 
-        saved_message = await server.db.send_message(user_id, self.room, mes)
+            saved_message = await server.db.send_message(user_id, self.room, mes)
+        except Exception as e:
+            writer.write(e.args[1].encode())
 
 
 class LeaveAction(BaseAction):
@@ -157,7 +205,7 @@ ActionUnion = Annotated[
         JoinChatAction,
         JoinGroupAction,
         JoinUserAction,
-        CreateAction,
+        JoinServerAction,
         SendAction,
         LeaveAction,
         RegisterAction,
