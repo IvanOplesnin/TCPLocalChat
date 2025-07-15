@@ -113,5 +113,17 @@ class DbRepo:
             users = users.scalars().all()
             return users
 
+    async def get_chats_user(self, user_id: int) -> list[ChatRoom | None]:
+        async with self.async_session() as session:
+            if user_id:
+                stmt = select(Membership).where(Membership.id_user == user_id)
+                memberships = await session.execute(stmt)
+                memberships = memberships.scalars().all()
+                chat_rooms = [await session.get(ChatRoom, m.id_room) for m in memberships]
+                return chat_rooms
+            else:
+                return []
+
+
 
 

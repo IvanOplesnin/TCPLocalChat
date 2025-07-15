@@ -33,7 +33,6 @@ class BaseMessage(BaseModel):
     def _to_bytes(self) -> bytes:
         return json.dumps(self.model_dump()).encode() + END_MARKER
 
-
     async def send_message(self, writer: "asyncio.StreamWriter"):
         writer.write(self._to_bytes())
         await writer.drain()
@@ -45,9 +44,8 @@ class BaseMessage(BaseModel):
 class RoomBrief(BaseModel):
     room_id: int
     title: str
-    last_message: str | None
-    last_time: str | None
-    unread: int
+    users: list['UserBrief']
+    # unread: int
 
 
 class TokenMessage(BaseMessage):
@@ -74,6 +72,7 @@ class UserBrief(BaseModel):
     username: str
 
     model_config = ConfigDict(from_attributes=True)
+
 
 class InitMessage(BaseMessage):
     type_: Literal[TypeMessage.init] = Field(TypeMessage.init, alias="type")

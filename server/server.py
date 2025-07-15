@@ -47,9 +47,9 @@ class Server:
                     data = data.removesuffix(END_MARKER)
                     action: Action = adapter.validate_python(json.loads(data))
                     if token := getattr(action, 'token', None):
-                        self.log.info(f"Есть токен{token}")
+                        self.log.info(f"Есть токен: {token}")
                         payload = decode_token(token)
-                        user_id, username = payload['user_id'], payload['username']
+                        user_id, username = payload['id'], payload['username']
                         if user_id not in self.users:
                             user = await self.db.get_user_by_id(user_id)
                             if not user:

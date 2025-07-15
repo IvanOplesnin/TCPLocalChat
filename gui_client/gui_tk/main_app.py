@@ -14,7 +14,6 @@ from server.server import Action
 from action.schemas import RegisterAction, JoinServerAction, Command
 
 CFG_PATH = Path(os.getenv("ONLINECHAT_CFG", Path.home()/".onlinechat/config.json"))
-
 logger = get_logger('Интерфейс')
 
 class AppConfig:
@@ -141,6 +140,7 @@ class App(tk.Tk):
 
         self.cfg = AppConfig()
         if token:=self.cfg.get('token'):
+            logger.info(f"Есть {token}")
             self.send_action(
                 JoinServerAction(command=Command.JOIN_SERVER, token=token)
             )
@@ -179,10 +179,10 @@ class App(tk.Tk):
         token = msg.content
         payload = decode_token(token)
         username = payload.get("username")
-        user_id = payload.get("user_id")
+        user_id = payload.get("id")
         self.cfg.set('token', token)
         self.cfg.set('username', username)
-        self.cfg.set('user_id', user_id)
+        self.cfg.set('id', user_id)
         self.cfg.save()
 
 
@@ -191,6 +191,10 @@ class App(tk.Tk):
         main_frame: MainFrame = self.frames['MainFrame']
         main_frame.init_process(msg)
 
+    def destroy(self):
+        if self.loop.is_running():
+            self.loop.call_soon_threadsafe(self.loop.stop)
+        super().destroy()
 
 
 

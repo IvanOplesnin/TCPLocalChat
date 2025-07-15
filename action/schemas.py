@@ -13,7 +13,7 @@ from action.schemas_message import (
     InitMessage,
     UpdateMessage,
     TokenMessage,
-    TypeMessage, UserBrief, UpdateKind, END_MARKER
+    TypeMessage, UserBrief, UpdateKind, END_MARKER, RoomBrief
 )
 from utils.logger import get_logger
 
@@ -45,7 +45,7 @@ class BaseAction(BaseModel):
     async def send_action(self, writer: 'asyncio.StreamWriter'):
         writer.write(self._to_bytes())
         await writer.drain()
-        self.log.info(f"Отправлена информация {json.dumps(self.model_dump())}")
+
 
 
 class RegisterAction(BaseAction):
@@ -82,7 +82,6 @@ class RegisterAction(BaseAction):
             server.log.info(f"Отправлено {update_message}")
             return new_user
         except Exception as e:
-            self.log.info(f'{str(e)}')
             writer.write(str(e).encode())
 
 
@@ -100,7 +99,8 @@ class AuthorizeAction(BaseAction):
             token_message = TokenMessage(content=auth_token)
             await token_message.send_message(writer)
         except Exception as e:
-            writer.write(e.args[1].encode())
+            raise
+
 
 
 class JoinServerAction(BaseAction):
@@ -111,13 +111,20 @@ class JoinServerAction(BaseAction):
             payload = decode_token(self.token)
             user_id, username = payload['id'], payload['username']
             user = await server.db.get_user_by_id(user_id)
+            all_users = await server.db.get_all_users()
+            rooms = await server.db.get_chats_user(user.id)
+            init_message = InitMessage(
+                type=TypeMessage.init,
+                self_user={"id": user.id, "username": user.username},
+                rooms=[RoomBrief(room_id=r.id, title=r.name, ) for r in rooms]
+            )
             if user and user.username == username:
-                server.users[user_id.id] = writer
+                server.users[user.id] = writer
             else:
                 raise Exception(f'User not found, maybe old token')
-        except Exception as e:
 
-            writer.write(e.args[1].encode())
+        except Exception as e:
+            raise
 
 
 class JoinChatAction(BaseAction):
