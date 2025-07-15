@@ -30,7 +30,7 @@ class Server:
         self.log.info("Создание экзкмепляра Сервера")
 
     async def start(self):
-        server = await asyncio.start_server(self.handle_client, '127.0.0.1', 8888)
+        server = await asyncio.start_server(self.handle_client, '0.0.0.0', 8888)
         addr = server.sockets[0].getsockname()
         self.log.info(f"Сервер запущен на {addr}")
         await server.serve_forever()

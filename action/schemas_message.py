@@ -12,6 +12,7 @@ class TypeMessage(str, Enum):
     message = "message"
     update = "update"
     init = "init"
+    join_chat = "join_chat"
 
 
 class UpdateKind(str, Enum):
@@ -45,6 +46,8 @@ class RoomBrief(BaseModel):
     room_id: int
     title: str
     users: list['UserBrief']
+
+
     # unread: int
 
 
@@ -57,7 +60,7 @@ class Message(BaseMessage):
     from_: int
     from_username: str
     room_id: int
-    time_: str
+    time_: float
 
 
 class UpdateMessage(BaseMessage):
@@ -83,8 +86,15 @@ class InitMessage(BaseMessage):
     content: Optional[str] = None
 
 
+class JoinChatMessage(BaseMessage):
+    type_: Literal[TypeMessage.join_chat] = Field(TypeMessage.join_chat, alias="type")
+    messages: list[Message] = Field()
+
+
+
+
 AnyMessage = Annotated[
-    Union[Message, UpdateMessage, InitMessage, TokenMessage],
+    Union[Message, UpdateMessage, InitMessage, TokenMessage, JoinChatMessage],
     Field(discriminator="type_")
 ]
 
