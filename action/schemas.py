@@ -185,10 +185,22 @@ class JoinChatAction(BaseAction):
             payload = decode_token(self.token)
             user_id, username = payload['id'], payload['username']
 
-            mes = f"Пользователь {username} подключился"
-            for user_id in server.chats[self.room]:
-                if writer:=server.users.get(user_id):
-                    writer.write(mes.encode())
+            mes = f"Пользователь {username} подключился\n"
+            if self.message:
+                mes += f"\n{self.message}"
+
+            message = Message(
+                type=TypeMessage.message,
+                content=mes,
+                time_=datetime.datetime.now().timestamp(),
+                from_username=username,
+                from_=user_id,
+                room_id=self.room
+            )
+
+            await server.send_in_chats(message, self.room)
+
+
 
             messages_chat: Sequence[MessageDb] = await server.db.get_messages(self.room)
             join_chat_message = JoinChatMessage(
@@ -239,11 +251,21 @@ class JoinUserAction(BaseAction):
                 time_=datetime.datetime.now().timestamp(),
                 type=TypeMessage.message
             )
-            for user in server.chats[new_room.id]:
-                user_writer = server.users.get(user)
-                if user_writer:
-                    await new_message.send_message(user_writer)
-            await server.db.send_message(user_id, new_room.id, mes)
+            await server.send_in_chats(new_message, new_room.id)
+
+            participants: list[User] = await self.get_users_in_room(new_room.id)
+            update_new_room = UpdateMessage(
+                kind=UpdateKind.new_room,
+                payload={"id": new_room.id,
+                         'title': new_room.name,
+                         'users': [
+                             UserBrief(id=p.id, username=p.username).model_dump()
+                             for p in participants
+                         ]},
+                type=TypeMessage.update,
+            )
+            await server.send_in_chats(update_new_room, new_room.id)
+
 
             join_chat_message = JoinChatMessage(
                 type=TypeMessage.join_chat,
@@ -282,7 +304,7 @@ class SendAction(BaseAction):
                 from_=user_id,
                 from_username=username,
                 room_id=room.id,
-                time_=datetime.datetime.now().strftime("%H:%M:%S"),
+                time_=datetime.datetime.now().timestamp(),
                 type=TypeMessage.message
             )
             for user in server.chats[room.id]:

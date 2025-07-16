@@ -19,6 +19,7 @@ class UpdateKind(str, Enum):
     user_online = "user_online"
     user_offline = "user_offline"
     new_room = "new_room"
+    update_room = "update_room"
     new_message = "new_message"
 
 

@@ -186,6 +186,9 @@ class MainFrame(ttk.Frame):
                     label.chat_id = room_id
                     self.chats.append(label)
 
+            case 'update_room':
+                pass
+
 
 
 

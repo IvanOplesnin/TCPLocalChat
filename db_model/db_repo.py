@@ -144,6 +144,17 @@ class DbRepo:
             result = await session.execute(stmt)
             return result.scalars().all()
 
+    async def get_users_in_room(self, room_id: int) -> Sequence[User]:
+        async with self.async_session() as session:
+            stmt = (
+                select(User)
+                .join(Membership, Membership.id_user == User.id)
+                .where(Membership.id_room == room_id)
+            )
+
+            result = await session.scalars(stmt)
+            return result.all()
+
 
 if __name__ == '__main__':
     from config import Config
