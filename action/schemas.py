@@ -259,7 +259,7 @@ class JoinUserAction(BaseAction):
             )
             await server.send_in_chats(new_message, new_room.id)
 
-            participants: list[User] = await self.get_users_in_room(new_room.id)
+            participants = await server.db.get_users_in_room(new_room.id)
             update_new_room = UpdateMessage(
                 kind=UpdateKind.new_room,
                 payload={"id": new_room.id,
