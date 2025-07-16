@@ -33,6 +33,10 @@ class Server:
         server = await asyncio.start_server(self.handle_client, '0.0.0.0', 8888)
         addr = server.sockets[0].getsockname()
         self.log.info(f"Сервер запущен на {addr}")
+        chats = await self.db.get_rooms()
+        for chat in chats:
+            self.chats[chat.id] = set()
+
         await server.serve_forever()
 
     async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -61,18 +65,20 @@ class Server:
                     break
             self.log.info(f'Пользователь {addr} отключился')
         except Exception as e:
-            self.log.error(e)
+            self.log.error(e, exc_info=True)
         finally:
             self.log.info(f"Удаляем пользователя {addr}")
 
     async def all_broadcast(self, message: BaseMessage):
+        self.log.info(f"Оповещаем всех {message}")
         for user_id in self.users:
             writer = self.users[user_id]
             await message.send_message(writer)
 
     async def send_in_chats(self, message: BaseMessage, room_id: int):
+        self.log.info(f"Оповещаем в комнате {room_id} {message}")
         for user_id in self.chats[room_id]:
-            if writer := self.users[user_id]:
+            if writer := self.users.get(user_id):
                 await message.send_message(writer)
 
 async def main():

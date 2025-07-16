@@ -22,6 +22,8 @@ if TYPE_CHECKING:
     from server.server import Server
 
 
+log = get_logger(__name__, to_file=True)
+
 class Command(str, Enum):
     JOIN_CHAT = 'JOIN_CHAT'
     JOIN_GROUP = 'JOIN_GROUP'
@@ -184,10 +186,12 @@ class JoinChatAction(BaseAction):
         try:
             payload = decode_token(self.token)
             user_id, username = payload['id'], payload['username']
+            server.chats[self.room].add(user_id)
 
             mes = f"Пользователь {username} подключился\n"
             if self.message:
                 mes += f"\n{self.message}"
+
 
             message = Message(
                 type=TypeMessage.message,
@@ -197,12 +201,14 @@ class JoinChatAction(BaseAction):
                 from_=user_id,
                 room_id=self.room
             )
-
+            await server.db.send_message(user_id, self.room, mes)
             await server.send_in_chats(message, self.room)
 
 
 
             messages_chat: Sequence[MessageDb] = await server.db.get_messages(self.room)
+            log.info(f"Получены сообщения чата {self.room}")
+            log.info(f"Кол-во сообщений{len(messages_chat)}")
             join_chat_message = JoinChatMessage(
                     type=TypeMessage.join_chat,
                     content='',
@@ -218,7 +224,7 @@ class JoinChatAction(BaseAction):
                     ]
                 )
             await join_chat_message.send_message(writer)
-        except Exception as e:
+        except Exception:
             raise
 
 
@@ -236,7 +242,7 @@ class JoinUserAction(BaseAction):
     async def run(self, server: "Server", _: 'asyncio.StreamReader', writer: 'asyncio.StreamWriter'):
         try:
             new_room: ChatRoom = await server.db.new_room_privat(self)
-            messages_chat: Sequence[MessageDb] = await server.db.get_messages(self.room)
+            messages_chat: Sequence[MessageDb] = await server.db.get_messages(new_room.id)
             payload = decode_token(self.token)
             user_id, username = payload['id'], payload['username']
             server.chats[new_room.id] = {self.user_id, user_id}

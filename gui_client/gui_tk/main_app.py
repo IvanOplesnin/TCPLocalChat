@@ -12,7 +12,7 @@ from action.schemas_message import BaseMessage, TokenMessage, InitMessage, JoinC
 from gui_client.async_connector import AsyncConnector
 from gui_client.client_logger import get_logger
 from server.server import Action
-from action.schemas import RegisterAction, JoinServerAction, Command, JoinUserAction, JoinChatAction
+from action.schemas import RegisterAction, JoinServerAction, Command, JoinUserAction, JoinChatAction, SendAction
 
 CFG_PATH = Path(os.getenv("ONLINECHAT_CFG", Path.home() / ".onlinechat/config.json"))
 logger = get_logger('Интерфейс')
@@ -111,9 +111,9 @@ class MainFrame(ttk.Frame):
             label.pack(side="top", fill="x", padx=5)
             label.bind(
                 "<Button-1>",
-                lambda e, chat_id=chat.id: self.create_join_chat_action(chat_id)
+                lambda e, chat_id=chat.room_id: self.create_join_chat_action(chat_id)
             )
-            label.chat_id = chat.id
+            label.chat_id = chat.room_id
             self.chats.append(label)
 
     def create_join_chat_action(self, room_id):
@@ -131,7 +131,7 @@ class MainFrame(ttk.Frame):
     def open_chat(self, msg: JoinChatMessage):
         self.controller.room_id = msg.messages[0].room_id
         messages = sorted(msg.messages, key=lambda m: m.time_)
-        for child in self.main_frame.winfo_children():
+        for child in self.msg_container.winfo_children():
             child.destroy()
         for m in messages:
             bubble = ttk.Frame(self.msg_container)
@@ -188,6 +188,17 @@ class MainFrame(ttk.Frame):
 
             case 'update_room':
                 pass
+
+    def send_message(self, e: tk.Event):
+        widget: ttk.Entry = e.widget
+        if widget.get():
+            send_action = SendAction(
+                command=Command.SEND,
+                room=self.controller.room_id,
+                token=self.controller.token,
+                message=widget.get()
+            )
+            self.controller.send_action(send_action)
 
 
 
@@ -307,6 +318,8 @@ class App(tk.Tk):
                 self.proc_init_msg(msg)
             case UpdateMessage():
                 self.proc_update_msg(msg)
+            case JoinChatMessage():
+                self.join_chat(msg)
 
     def proc_token_msg(self, msg: TokenMessage):
         self.token = msg.content
@@ -329,6 +342,11 @@ class App(tk.Tk):
     def proc_update_msg(self, msg: UpdateMessage):
         main_frame: MainFrame = self.frames['MainFrame']
         main_frame.proc_update_msg(msg)
+
+    def join_chat(self, msg: JoinChatMessage):
+        main_frame: MainFrame = self.frames['MainFrame']
+        main_frame.open_chat(msg)
+
 
     def destroy(self):
         if self.loop.is_running():

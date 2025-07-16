@@ -134,13 +134,15 @@ class DbRepo:
                 )
             )
 
-            result = await session.scalars(stmt)
+            result = (await session.scalars(stmt)).unique()
             return result.all()
 
 
     async def get_messages(self, room_id: int) -> Sequence[Message]:
         async with self.async_session() as session:
-            stmt = select(Message).where(Message.room_id == room_id)
+            stmt = select(Message).where(Message.room_id == room_id).options(
+                joinedload(Message.user)
+            )
             result = await session.execute(stmt)
             return result.scalars().all()
 
@@ -155,6 +157,11 @@ class DbRepo:
             result = await session.scalars(stmt)
             return result.all()
 
+    async def get_rooms(self) -> Sequence[ChatRoom]:
+        async with self.async_session() as session:
+            stmt = select(ChatRoom)
+            result = await session.execute(stmt)
+            return result.scalars().all()
 
 if __name__ == '__main__':
     from config import Config
