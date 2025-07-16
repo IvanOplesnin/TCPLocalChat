@@ -8,7 +8,7 @@ from queue import Queue, Empty
 from tkinter import ttk
 
 from action.auth_token import decode_token
-from action.schemas_message import BaseMessage, TokenMessage, InitMessage, JoinChatMessage, UpdateMessage
+from action.schemas_message import BaseMessage, TokenMessage, InitMessage, JoinChatMessage, UpdateMessage, Message
 from gui_client.async_connector import AsyncConnector
 from gui_client.client_logger import get_logger
 from server.server import Action
@@ -201,7 +201,25 @@ class MainFrame(ttk.Frame):
             self.controller.send_action(send_action)
 
 
+    def new_message(self, m: Message):
+        if self.controller.room_id == m.room_id:
+            bubble = ttk.Frame(self.msg_container)
+            bubble.pack(fill="x", pady=2, padx=5)
 
+            text = f"{m.content}\n[{datetime.fromtimestamp(m.time_).strftime('%H:%M:%S')}]"
+            lbl = ttk.Label(bubble, text=text, wraplength=300, justify="left",
+                            background="#e1ffc7" if m.from_ == self.controller.user_id else "#ffffff",
+                            relief="ridge", padding=5)
+
+            if m.from_ == self.controller.user_id:
+                # свои сообщения справа
+                lbl.pack(side="right", anchor="e", padx=(50, 0))
+            else:
+                # чужие слева
+                lbl.pack(side="left", anchor="w", padx=(0, 50))
+
+            # прокрутить вниз
+            self.canvas.yview_moveto(1.0)
 
 
 
@@ -320,6 +338,8 @@ class App(tk.Tk):
                 self.proc_update_msg(msg)
             case JoinChatMessage():
                 self.join_chat(msg)
+            case Message():
+                self.new_message(msg)
 
     def proc_token_msg(self, msg: TokenMessage):
         self.token = msg.content
@@ -346,6 +366,10 @@ class App(tk.Tk):
     def join_chat(self, msg: JoinChatMessage):
         main_frame: MainFrame = self.frames['MainFrame']
         main_frame.open_chat(msg)
+
+    def new_message(self, msg: Message):
+        main_frame: MainFrame = self.frames['MainFrame']
+        main_frame.new_message(msg)
 
 
     def destroy(self):
